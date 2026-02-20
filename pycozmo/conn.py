@@ -80,7 +80,10 @@ class SendThread(Thread):
                 resend_pkts = self._resend_messages()
                 new_pkts, last_ack = self._collect_messages()
                 self._send_packets(resend_pkts + new_pkts, last_ack)
-            except Exception:
+            except Exception as e:
+                logger_protocol.error("SendThread exception: {}".format(e))
+                import traceback
+                logger_protocol.error(traceback.format_exc())
                 pass
 
     def _collect_messages(self) -> Tuple[list, int]:
@@ -92,6 +95,7 @@ class SendThread(Thread):
         while not is_full and not self.disconnected and time.perf_counter() - start < self.COLLECT_INTERVAL:
             try:
                 pkt = self.queue.get(timeout=self.COLLECT_INTERVAL)
+                logger_protocol.debug("SendThread collected packet from queue: type={}, id={}".format(pkt.type, pkt.id))
             except Empty:
                 continue
             self.outgoing_packets += 1
@@ -107,6 +111,9 @@ class SendThread(Thread):
                     last_ack = self.last_ack
                     is_full = self.window.is_full()
                 pkts.append((seq, pkt))
+        if pkts:
+            logger_protocol.debug("SendThread collected {} packets to send".format(len(pkts)))
+            pass
         return pkts, last_ack
 
     def _resend_messages(self) -> list:
@@ -154,15 +161,27 @@ class SendThread(Thread):
         raw_frame = Frame(protocol_declaration.FrameType.PING, OOB_SEQ, OOB_SEQ, self.last_ack, [pkt]).to_bytes()
         self._send_raw_frame(raw_frame)
 
+    def _send_ack(self, pkt) -> None:
+        """Send acknowledgment packet directly, bypassing the SendWindow."""
+        self.sent_packets += 1
+        raw_frame = Frame(protocol_declaration.FrameType.ENGINE_ACT, OOB_SEQ, OOB_SEQ, self.last_ack, [pkt]).to_bytes()
+        self._send_raw_frame(raw_frame)
+
     def _send_frame(self, pkts, first_seq: int, seq: int, ack: int) -> None:
         self.sent_packets += len(pkts)
         raw_frame = self._build_frame(pkts, first_seq, seq, ack)
+        logger_protocol.debug("SendThread sending frame: first_seq={}, seq={}, ack={}, {} packets".format(first_seq, seq, ack, len(pkts)))
         self._send_raw_frame(raw_frame)
 
     @staticmethod
     def _build_frame(pkts, first_seq: int, seq: int, ack: int) -> bytes:
         try:
-            frame = Frame(protocol_declaration.FrameType.ENGINE, first_seq, seq, ack, pkts)
+            # Use ENGINE_ACT (single packet frame) for single packets
+            # Use ENGINE (multi-packet frame) for multiple packets
+            if len(pkts) == 1:
+                frame = Frame(protocol_declaration.FrameType.ENGINE_ACT, first_seq, seq, ack, pkts)
+            else:
+                frame = Frame(protocol_declaration.FrameType.ENGINE, first_seq, seq, ack, pkts)
             return frame.to_bytes()
         except Exception as e:
             logger.error("Failed to serialize frame. {}".format(e))
@@ -173,7 +192,10 @@ class SendThread(Thread):
             self.sock.sendto(raw_frame, self.receiver_address)
             self.sent_frames += 1
             self.sent_bytes += len(raw_frame)
-        except OSError:
+            logger_protocol.debug("SendThread successfully sent {} bytes".format(len(raw_frame)))
+        except OSError as e:
+            logger_protocol.error("SendThread failed to send frame: {}".format(e))
+
             self.discarded_frames += 1
 
     def send(self, data: Any) -> None:
@@ -185,6 +207,10 @@ class SendThread(Thread):
             self.window.acknowledge(seq)
             self.last_ack = last_ack
             self.last_ack_time = now
+        # Send acknowledgment frame back to robot directly (bypass SendWindow)
+        ack_pkt = protocol_encoder.AcknowledgeAction(seq)
+        self._send_ack(ack_pkt)
+        #logger_protocol.debug("SendThread sent acknowledgment: seq={}, last_ack={}".format(seq, last_ack))
 
     def reset(self) -> None:
         with self.lock:
@@ -248,15 +274,31 @@ class ReceiveThread(Thread):
                 continue
 
             try:
+                # Log raw frame payload for debugging
+                logger_protocol.debug("Raw frame hex (%d bytes): %s", len(raw_frame), raw_frame.hex())
                 frame = Frame.from_bytes(raw_frame)
+                logger_protocol.debug("Decoded frame: type=%s, first_seq=%04x, seq=%04x, ack=%04x, %d packets", frame.type, frame.first_seq, frame.seq, frame.ack, len(frame.pkts))
+                # Log each packet in the frame
+                for pkt in frame.pkts:
+                    pkt_id = getattr(pkt, 'id', None)
+                    seq = getattr(pkt, 'seq', None)
+                    ack = getattr(pkt, 'ack', None)
+                    try:
+                        oob = pkt.is_oob()
+                    except Exception:
+                        oob = 'N/A'
+                    logger_protocol.debug("  Packet: type=%s, id=%s, seq=%s, ack=%s, oob=%s", pkt.__class__.__name__, pkt_id, seq, ack, oob)
+
             except Exception as e:
                 self.discarded_frames += 1
-                logger_protocol.error("Failed to decode frame. {}".format(e))
+                logger_protocol.error("Failed to decode frame. {}: {} bytes".format(e, len(raw_frame)))
                 continue
 
             try:
                 if frame.type == protocol_declaration.FrameType.RESET:
                     self.handle_reset(address)
+                elif frame.type == protocol_declaration.FrameType.RESET_ACK:
+                    logger_protocol.debug("Received RESET_ACK from {}".format(address))
                 elif self.sender_address:
                     if self.sender_address != address:
                         logger_protocol.debug("Received a UDP datagram from unexpected address {}.".format(address))
@@ -302,6 +344,7 @@ class ReceiveThread(Thread):
 
     def handle_frame(self, frame: Frame) -> None:
         self.received_frames += 1
+        logger_protocol.debug("handle_frame: type=%s, seq=%s, ack=%s, pkts=%s", frame.type, frame.seq, frame.ack, len(frame.pkts))
         self.send_thread.ack(frame.ack, frame.seq)
         for pkt in frame.pkts:
             if isinstance(pkt, protocol_encoder.Disconnect):
@@ -434,16 +477,24 @@ class Connection(Thread, event.Dispatcher):
 
         logger_protocol.debug("Connecting...")
         self.state = self.CONNECTING
+        logger_protocol.debug("Connection state set to CONNECTING")
 
         self.send_thread.reset()
+        logger_protocol.debug("Send thread reset")
 
         frame = Frame(protocol_declaration.FrameType.RESET, 0, 0, OOB_SEQ, [])
         raw_frame = frame.to_bytes()
+        logger_protocol.debug("Sending RESET frame: {} bytes to {}".format(len(raw_frame), self.robot_addr))
         try:
             self.sock.sendto(raw_frame, self.robot_addr)
-        except OSError:
+            logger_protocol.debug("RESET frame sent successfully")
+        except OSError as e:
+            logger_protocol.error("Failed to send RESET frame: {}".format(e))
+            logger_protocol.debug("Connection failed during RESET frame send")
             pass
 
+        logger_protocol.debug("Wait for RESET response from robot...")
+        logger_protocol.debug("Connection process initiated")
     def send(self, pkt: Packet) -> None:
         self.send_last = time.perf_counter()
         self.send_thread.send(pkt)
@@ -469,8 +520,15 @@ class Connection(Thread, event.Dispatcher):
         self.ping_counter += 1
 
     def _on_packet_received(self, pkt):
-        if not self.packet_type_filter.filter(pkt.type.value) and not self.packet_id_filter.filter(pkt.id):
-            logger_protocol.debug("Got  %s", pkt)
+        # Log ALL packets for debugging
+        filtered = self.packet_type_filter.filter(pkt.type.value) or self.packet_id_filter.filter(pkt.id)
+        pkt_name = pkt.__class__.__name__
+        logger_protocol.debug("RECEIVED packet: %s, type=%s, id=%s, seq=%s, type_code=%s, id_code=%s, filtered=%s",
+                            pkt_name, pkt.type, pkt.id, pkt.seq,
+                            pkt.type.value, pkt.id, filtered)
+
+        #if not self.packet_type_filter.filter(pkt.type.value) and not self.packet_id_filter.filter(pkt.id):
+        #    logger_protocol.debug("Got  %s", pkt)
         self.dispatch(pkt.__class__, self, pkt)
 
     def _on_connect(self, cli, pkt: protocol_encoder.Connect):

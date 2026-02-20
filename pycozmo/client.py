@@ -135,8 +135,16 @@ class Client(event.Dispatcher):
         pkt = protocol_encoder.Enable()
         self.conn.send(pkt)
         self.conn.send(pkt)  # This repetition seems to trigger BodyInfo
+        
+        # For some firmware versions, EnableCamera is needed to trigger BodyInfo
+        pkt = protocol_encoder.EnableCamera(image_send_mode=protocol_encoder.ImageSendMode.Off)
+        self.conn.send(pkt)
 
     def _initialize_robot(self):
+        # Enable animation state streaming (needed for RobotState)
+        pkt = protocol_encoder.EnableAnimationState()
+        self.conn.send(pkt)
+        
         # Set world frame origin to (0,0,0), frame ID to 0, and origin ID to 1.
         pkt = protocol_encoder.SetOrigin()
         self.conn.send(pkt)
@@ -361,20 +369,18 @@ class Client(event.Dispatcher):
         msg = robot_debug.get_debug_message(pkt.name_id, pkt.format_id, pkt.args)
         logger_robot.log(robot_debug.get_log_level(pkt.level), msg)
 
-    def set_head_angle(self, angle: float, accel: float = 10.0, max_speed: float = 10.0,
-                       duration: float = 0.0):
+    def set_head_angle(self, angle: float, accel: float = 10.0, max_speed: float = 10.0):
         pkt = protocol_encoder.SetHeadAngle(angle_rad=angle, accel_rad_per_sec2=accel,
-                                            max_speed_rad_per_sec=max_speed, duration_sec=duration)
+                                            max_speed_rad_per_sec=max_speed)
         self.conn.send(pkt)
 
     def move_head(self, speed: float) -> None:
         pkt = protocol_encoder.MoveHead(speed_rad_per_sec=speed)
         self.conn.send(pkt)
 
-    def set_lift_height(self, height: float, accel: float = 10.0, max_speed: float = 10.0,
-                        duration: float = 0.0):
+    def set_lift_height(self, height: float, accel: float = 10.0, max_speed: float = 10.0):
         pkt = protocol_encoder.SetLiftHeight(height_mm=height, accel_rad_per_sec2=accel,
-                                             max_speed_rad_per_sec=max_speed, duration_sec=duration)
+                                             max_speed_rad_per_sec=max_speed)
         self.conn.send(pkt)
 
     def move_lift(self, speed: float) -> None:

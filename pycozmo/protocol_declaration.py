@@ -305,15 +305,13 @@ PROTOCOL = Protocol(
             FloatArgument("height_mm"),
             FloatArgument("max_speed_rad_per_sec", default=3.0),
             FloatArgument("accel_rad_per_sec2", default=20.0),
-            FloatArgument("duration_sec"),
-            UInt8Argument("action_id", description="Not present in v2214 and older."),
+            UInt16Argument("action_id", description="Not present in v2214 and older."),
         ]),
         Command(0x37, "SetHeadAngle", group="motors", arguments=[
             FloatArgument("angle_rad"),
             FloatArgument("max_speed_rad_per_sec", default=15.0),
             FloatArgument("accel_rad_per_sec2", default=20.0),
-            FloatArgument("duration_sec"),
-            UInt8Argument("action_id", description="Not present in v2214 and older."),
+            UInt16Argument("action_id", description="Not present in v2214 and older."),
         ]),
         Command(0x39, "TurnInPlace", group="motors", arguments=[
             FloatArgument("angle_rad"),
@@ -323,7 +321,7 @@ PROTOCOL = Protocol(
             UInt8Argument("unknown4"),
             UInt8Argument("unknown5"),
             BoolArgument("is_absolute"),
-            UInt8Argument("action_id"),
+            UInt16Argument("action_id"),
         ]),
         Command(0x3b, "StopAllMotors", group="motors"),
         Command(0x3c, "ClearPath", group="motors", arguments=[
@@ -484,7 +482,7 @@ PROTOCOL = Protocol(
             UInt8Argument("intensity"),
         ]),
         Command(0xc4, "AcknowledgeAction", group="motors", arguments=[
-            UInt8Argument("action_id"),
+            UInt16Argument("action_id"),
         ]),
         Command(0xc2, "RobotDelocalized", group="localization"),
         Command(0xc3, "RobotPoked", group="localization"),
@@ -542,7 +540,7 @@ PROTOCOL = Protocol(
             UInt32Argument("duration_ms"),
             FloatArgument("impact_intensity"),
         ]),
-        Command(0xed, "BodyInfo", group="system", arguments=[
+        Event(0xed, "BodyInfo", group="system", arguments=[
             UInt32Argument("serial_number"),
             UInt32Argument("body_hw_version", description="Production units report 5. Development units report 7."),
             EnumArgument("body_color", BODY_COLOR, data_type=Int32Argument(), default=-1),

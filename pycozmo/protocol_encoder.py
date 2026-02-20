@@ -1470,23 +1470,22 @@ class SetLiftHeight(Packet):
         "_height_mm",  # float
         "_max_speed_rad_per_sec",  # float
         "_accel_rad_per_sec2",  # float
-        "_duration_sec",  # float
-        "_action_id",  # uint8
+        "_action_id",  # uint16
+        "_duration_ms",  # uint16
     )
 
     def __init__(self,
                  height_mm=0.0,
                  max_speed_rad_per_sec=3.0,
                  accel_rad_per_sec2=20.0,
-                 duration_sec=0.0,
-                 action_id=0):
+                 action_id=0,
+                 duration_ms=0):
         super().__init__(PacketType.COMMAND, packet_id=0x36)
         self.height_mm = height_mm
         self.max_speed_rad_per_sec = max_speed_rad_per_sec
         self.accel_rad_per_sec2 = accel_rad_per_sec2
-        self.duration_sec = duration_sec
-        # Not present in v2214 and older.
         self.action_id = action_id
+        self.duration_ms = duration_ms
 
     @property
     def height_mm(self):
@@ -1512,13 +1511,7 @@ class SetLiftHeight(Packet):
     def accel_rad_per_sec2(self, value):
         self._accel_rad_per_sec2 = validate_float("accel_rad_per_sec2", value)
 
-    @property
-    def duration_sec(self):
-        return self._duration_sec
-
-    @duration_sec.setter
-    def duration_sec(self, value):
-        self._duration_sec = validate_float("duration_sec", value)
+    
 
     @property
     def action_id(self):
@@ -1526,28 +1519,34 @@ class SetLiftHeight(Packet):
 
     @action_id.setter
     def action_id(self, value):
-        self._action_id = validate_integer("action_id", value, 0, 255)
+        self._action_id = validate_integer("action_id", value, 0, 65535)
+
+    @property
+    def duration_ms(self):
+        return self._duration_ms
+
+    @duration_ms.setter
+    def duration_ms(self, value):
+        self._duration_ms = validate_integer("duration_ms", value, 0, 65535)
 
     def __len__(self):
         return \
             4 + \
             4 + \
             4 + \
-            4 + \
-            1
+            2 + \
+            2  # duration_ms
 
     def __repr__(self):
         return "{type}(" \
                "height_mm={height_mm}, " \
                "max_speed_rad_per_sec={max_speed_rad_per_sec}, " \
                "accel_rad_per_sec2={accel_rad_per_sec2}, " \
-               "duration_sec={duration_sec}, " \
                "action_id={action_id})".format(
                 type=type(self).__name__,
                 height_mm=self._height_mm,
                 max_speed_rad_per_sec=self._max_speed_rad_per_sec,
                 accel_rad_per_sec2=self._accel_rad_per_sec2,
-                duration_sec=self._duration_sec,
                 action_id=self._action_id)
 
     def to_bytes(self):
@@ -1559,8 +1558,8 @@ class SetLiftHeight(Packet):
         writer.write(self._height_mm, "f")
         writer.write(self._max_speed_rad_per_sec, "f")
         writer.write(self._accel_rad_per_sec2, "f")
-        writer.write(self._duration_sec, "f")
-        writer.write(self._action_id, "B")
+        writer.write(self._action_id, "H")
+        writer.write(self._duration_ms, "H")
 
     @classmethod
     def from_bytes(cls, buffer):
@@ -1573,14 +1572,13 @@ class SetLiftHeight(Packet):
         height_mm = reader.read("f")
         max_speed_rad_per_sec = reader.read("f")
         accel_rad_per_sec2 = reader.read("f")
-        duration_sec = reader.read("f")
-        action_id = reader.read("B")
+        action_id = reader.read("H")
+        duration_ms = reader.read("H")
         return cls(
             height_mm=height_mm,
             max_speed_rad_per_sec=max_speed_rad_per_sec,
-            accel_rad_per_sec2=accel_rad_per_sec2,
-            duration_sec=duration_sec,
-            action_id=action_id)
+            action_id=action_id,
+            duration_ms=duration_ms)
 
 
 class SetHeadAngle(Packet):
@@ -1589,23 +1587,22 @@ class SetHeadAngle(Packet):
         "_angle_rad",  # float
         "_max_speed_rad_per_sec",  # float
         "_accel_rad_per_sec2",  # float
-        "_duration_sec",  # float
-        "_action_id",  # uint8
+        "_action_id",  # uint16
+        "_duration_ms",  # uint16 - missing field needed for old firmware
     )
 
     def __init__(self,
                  angle_rad=0.0,
                  max_speed_rad_per_sec=15.0,
                  accel_rad_per_sec2=20.0,
-                 duration_sec=0.0,
-                 action_id=0):
+                 action_id=0,
+                 duration_ms=0):
         super().__init__(PacketType.COMMAND, packet_id=0x37)
         self.angle_rad = angle_rad
         self.max_speed_rad_per_sec = max_speed_rad_per_sec
         self.accel_rad_per_sec2 = accel_rad_per_sec2
-        self.duration_sec = duration_sec
-        # Not present in v2214 and older.
         self.action_id = action_id
+        self.duration_ms = duration_ms
 
     @property
     def angle_rad(self):
@@ -1632,41 +1629,39 @@ class SetHeadAngle(Packet):
         self._accel_rad_per_sec2 = validate_float("accel_rad_per_sec2", value)
 
     @property
-    def duration_sec(self):
-        return self._duration_sec
-
-    @duration_sec.setter
-    def duration_sec(self, value):
-        self._duration_sec = validate_float("duration_sec", value)
-
-    @property
     def action_id(self):
         return self._action_id
 
     @action_id.setter
     def action_id(self, value):
-        self._action_id = validate_integer("action_id", value, 0, 255)
+        self._action_id = validate_integer("action_id", value, 0, 65535)
+
+    @property
+    def duration_ms(self):
+        return self._duration_ms
+
+    @duration_ms.setter
+    def duration_ms(self, value):
+        self._duration_ms = validate_integer("duration_ms", value, 0, 65535)
 
     def __len__(self):
         return \
             4 + \
             4 + \
             4 + \
-            4 + \
-            1
+            2 + \
+            3  # duration_ms (2) + padding (1)
 
     def __repr__(self):
         return "{type}(" \
                "angle_rad={angle_rad}, " \
                "max_speed_rad_per_sec={max_speed_rad_per_sec}, " \
                "accel_rad_per_sec2={accel_rad_per_sec2}, " \
-               "duration_sec={duration_sec}, " \
                "action_id={action_id})".format(
                 type=type(self).__name__,
                 angle_rad=self._angle_rad,
                 max_speed_rad_per_sec=self._max_speed_rad_per_sec,
                 accel_rad_per_sec2=self._accel_rad_per_sec2,
-                duration_sec=self._duration_sec,
                 action_id=self._action_id)
 
     def to_bytes(self):
@@ -1678,8 +1673,9 @@ class SetHeadAngle(Packet):
         writer.write(self._angle_rad, "f")
         writer.write(self._max_speed_rad_per_sec, "f")
         writer.write(self._accel_rad_per_sec2, "f")
-        writer.write(self._duration_sec, "f")
-        writer.write(self._action_id, "B")
+        writer.write(self._action_id, "H")
+        writer.write(self._duration_ms, "H")
+        writer.write(0, "B")  # padding
 
     @classmethod
     def from_bytes(cls, buffer):
@@ -1692,14 +1688,15 @@ class SetHeadAngle(Packet):
         angle_rad = reader.read("f")
         max_speed_rad_per_sec = reader.read("f")
         accel_rad_per_sec2 = reader.read("f")
-        duration_sec = reader.read("f")
-        action_id = reader.read("B")
+        action_id = reader.read("H")
+        duration_ms = reader.read("H")
+        reader.read("B")  # padding
         return cls(
             angle_rad=angle_rad,
             max_speed_rad_per_sec=max_speed_rad_per_sec,
             accel_rad_per_sec2=accel_rad_per_sec2,
-            duration_sec=duration_sec,
-            action_id=action_id)
+            action_id=action_id,
+            duration_ms=duration_ms)
 
 
 class TurnInPlace(Packet):
@@ -1796,7 +1793,7 @@ class TurnInPlace(Packet):
 
     @action_id.setter
     def action_id(self, value):
-        self._action_id = validate_integer("action_id", value, 0, 255)
+        self._action_id = validate_integer("action_id", value, 0, 65535)
 
     def __len__(self):
         return \
@@ -1842,7 +1839,7 @@ class TurnInPlace(Packet):
         writer.write(self._unknown4, "B")
         writer.write(self._unknown5, "B")
         writer.write(int(self._is_absolute), "b")
-        writer.write(self._action_id, "B")
+        writer.write(self._action_id, "H")
 
     @classmethod
     def from_bytes(cls, buffer):
@@ -1859,7 +1856,7 @@ class TurnInPlace(Packet):
         unknown4 = reader.read("B")
         unknown5 = reader.read("B")
         is_absolute = bool(reader.read("b"))
-        action_id = reader.read("B")
+        action_id = reader.read("H")
         return cls(
             angle_rad=angle_rad,
             speed_rad_per_sec=speed_rad_per_sec,
@@ -4662,11 +4659,11 @@ class AcknowledgeAction(Packet):
 
     @action_id.setter
     def action_id(self, value):
-        self._action_id = validate_integer("action_id", value, 0, 255)
+        self._action_id = validate_integer("action_id", value, 0, 65535)
 
     def __len__(self):
         return \
-            1
+            2
 
     def __repr__(self):
         return "{type}(" \
@@ -4680,7 +4677,7 @@ class AcknowledgeAction(Packet):
         return writer.dumps()
 
     def to_writer(self, writer):
-        writer.write(self._action_id, "B")
+        writer.write(self._action_id, "H")
 
     @classmethod
     def from_bytes(cls, buffer):
@@ -4690,7 +4687,14 @@ class AcknowledgeAction(Packet):
 
     @classmethod
     def from_reader(cls, reader):
-        action_id = reader.read("B")
+        # Handle both 1-byte and 2-byte action_id
+        remaining = len(reader) - reader.tell()
+        if remaining >= 2:
+            action_id = reader.read("H")
+        elif remaining == 1:
+            action_id = reader.read("B")
+        else:
+            action_id = 0
         return cls(
             action_id=action_id)
 
@@ -5693,7 +5697,7 @@ class BodyInfo(Packet):
                  serial_number=0,
                  body_hw_version=0,
                  body_color=-1):
-        super().__init__(PacketType.COMMAND, packet_id=0xed)
+        super().__init__(PacketType.EVENT, packet_id=0xed)
         self.serial_number = serial_number
         # Production units report 5. Development units report 7.
         self.body_hw_version = body_hw_version
@@ -5713,7 +5717,7 @@ class BodyInfo(Packet):
 
     @body_hw_version.setter
     def body_hw_version(self, value):
-        self._body_hw_version = validate_integer("body_hw_version", value, 0, 4294967295)
+        self._body_hw_version = validate_integer("body_hw_version", value, 0, 255)
 
     @property
     def body_color(self) -> BodyColor:
@@ -5722,13 +5726,14 @@ class BodyInfo(Packet):
     @body_color.setter
     def body_color(self, value: BodyColor) -> None:
         self._body_color = value
-        validate_integer("body_color", value.value, -2147483648, 2147483647)
+        validate_integer("body_color", value.value, -128, 127)
 
     def __len__(self):
         return \
             4 + \
-            4 + \
-            4
+            1 + \
+            1 + \
+            5
 
     def __repr__(self):
         return "{type}(" \
@@ -5747,8 +5752,10 @@ class BodyInfo(Packet):
 
     def to_writer(self, writer):
         writer.write(self._serial_number, "L")
-        writer.write(self._body_hw_version, "L")
-        writer.write(self._body_color.value, "l")
+        writer.write(self._body_hw_version, "B")
+        writer.write(self._body_color.value, "B")
+        # Write 5 bytes of padding
+        writer.write_bytes(bytes(5))
 
     @classmethod
     def from_bytes(cls, buffer):
@@ -5759,8 +5766,10 @@ class BodyInfo(Packet):
     @classmethod
     def from_reader(cls, reader):
         serial_number = reader.read("L")
-        body_hw_version = reader.read("L")
-        body_color = reader.read("l")
+        body_hw_version = reader.read("B")
+        body_color = reader.read("b")
+        # Skip 5 bytes of padding
+        reader.seek_cur(5)
         return cls(
             serial_number=serial_number,
             body_hw_version=body_hw_version,

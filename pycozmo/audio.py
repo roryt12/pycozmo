@@ -82,4 +82,6 @@ def u_law_encoding(sample: int) -> int:
         position -= 1
 
     lsb = (sample >> (position - 4)) & 0x0f
-    return -(~(sign | ((position - 7) << 4) | lsb))
+    result = -(~(sign | ((position - 7) << 4) | lsb))
+    # Clamp to valid byte range (0-255) to handle edge cases
+    return max(0, min(255, result & 0xFF))
